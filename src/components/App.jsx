@@ -1,110 +1,85 @@
 import React, { Component } from 'react';
 import Searchbar from './Searchbar/Searchbar';
-import axios from 'axios';
 import Notiflix from 'notiflix';
 import ImageGallery from './ImageGallery/ImageGallery';
 import Button from './Button/Button';
 import Loader from './Loader/Loader';
 import Modal from './Modal/Modal';
-import css from './App.module.css'
-
-const fetchFunc = async function(search, page) {
-  try {
-    const response = await axios.get(`https://pixabay.com/api/`, {
-      params: {
-        key: '44209717-4a56fa844a5258582c59ce6a4',
-        q: search,
-        image_type: 'photo',
-        orientation: 'horizontal',
-        safesearch: true,
-        per_page: 12,
-        page: page,
-      },
-    });
-    return response.data;
-
-  } catch (error) {
-    console.error('Error fetching data:', error);
-    Notiflix.Notify.failure('Failed to fetch data');
-  }
-};
+import css from './App.module.css';
+import { fetchFunc } from '../services/api';
 
 class App extends Component {
   state = {
     search: '',
-    searchBarValue: '',
     page: 1,
     dataStore: [],
-    currentHits: 12,
-    totalHits: 0,
+    totalPages: 1,
     loading: false,
     isModalOpen: false,
     currentImg: {},
   };
 
-  handleChange = evt => {
-    const { value } = evt.target;
-    this.setState({ searchBarValue: value });
-  };
-
-  handleSubmit = async evt => {
-    evt.preventDefault();
-    const { searchBarValue } = this.state;
-    if (searchBarValue.trim() === '') {
-      Notiflix.Notify.warning('Please enter a search query.');
-      return;
+  componentDidUpdate(prevProps, prevState) {
+    if (
+      prevState.search !== this.state.search ||
+      prevState.page !== this.state.page
+    ) {
+      this.addImages();
     }
-    this.setState({ search: searchBarValue, page: 1, dataStore: [], currentHits: 12, totalHits: 0, loading: true });
-    const data = await fetchFunc(searchBarValue, 1);
+  }
+
+  addImages = async () => {
+    const { search, page } = this.state;
+    this.setState({ loading: true });
+    const data = await fetchFunc(search, page);
     if (data && data.hits.length > 0) {
-      this.setState({ dataStore: data.hits, totalHits: data.totalHits, loading: false });
+      this.setState(prevState => ({
+        dataStore: [...prevState.dataStore, ...data.hits],
+        loading: false,
+        totalPages: Math.ceil(data.totalHits / 12),
+      }));
     } else {
       this.setState({ loading: false });
     }
   };
 
-  handleLoadMore = async () => {
-    const { search, page, dataStore, currentHits } = this.state;
-    this.setState({ loading: true });
-    const nextPage = page + 1;
-    const hitsStep = currentHits + 12;
-    const data = await fetchFunc(search, nextPage);
-    if (data && data.hits.length > 0) {
-      this.setState({
-        dataStore: [...dataStore, ...data.hits],
-        page: nextPage,
-        currentHits: hitsStep,
-        loading: false,
-      });
-    }else {
-      this.setState({ loading: false });
+  handleSubmit = (value) => {
+    if (value.trim() === '') {
+      Notiflix.Notify.warning('Please enter a search query.');
+      return;
     }
+    this.setState({ search: value, page: 1, dataStore: [] });
+  };
 
+  loadMore = () => {
+    this.setState(prevState => ({
+      page: prevState.page + 1,
+    }));
   };
 
   openModal = evt => {
-    const {id, alt} = evt.target
-    this.setState({isModalOpen: true, currentImg:{src: id, alt: alt}})
-  }
+    const { id, alt } = evt.target;
+    this.setState({ isModalOpen: true, currentImg: { src: id, alt: alt } });
+  };
 
   closeModal = () => {
-    this.setState({isModalOpen: false})
-  }
+    this.setState({ isModalOpen: false });
+  };
 
   render() {
-    const { dataStore, currentHits, totalHits, loading, isModalOpen, currentImg } = this.state;
+    const { dataStore, loading, isModalOpen, currentImg, totalPages, page } = this.state;
     return (
       <div className={css.app}>
-        <Searchbar value={this.searchBarValue} onChange={this.handleChange} onSubmit={this.handleSubmit} />
-        {dataStore && (
-          <ImageGallery data={dataStore} openModal={this.openModal}/>
+        <Searchbar  onSubmit={this.handleSubmit} />
+        {dataStore.length > 0 && (
+          <ImageGallery data={dataStore} openModal={this.openModal} />
         )}
         {loading && <Loader />}
-        {totalHits > currentHits && (
-          <Button onClick={this.handleLoadMore} />
+        {totalPages !== page && !loading && (
+          <Button onClick={this.loadMore} />
         )}
         {isModalOpen && (
-          <Modal onClose={this.closeModal} data={currentImg}/>
+          <Modal onClose={this.closeModal} data={currentImg} />
         )}
       </div>
     );
